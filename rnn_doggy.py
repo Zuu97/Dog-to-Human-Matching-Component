@@ -30,7 +30,6 @@ tf.config.experimental.set_memory_growth(physical_devices[0], True)
 class DoggyRNN:
     def __init__(self):
         if not (os.path.exists(rnn_architecture)  and os.path.exists(rnn_weights)):
-            print('FUck')
             Xtrain, Xtest, Ytrain, Ytest = load_text_data()
             self.Xtrain = Xtrain
             self.Ytrain = Ytrain
@@ -39,6 +38,9 @@ class DoggyRNN:
             print("Train input shape : {}".format(Xtrain.shape))
             print("Test  input shape : {}".format(Xtest.shape))
             self.size_output = len(set(self.Ytest))
+            print("Train input shape : {}".format(Xtrain.shape))
+            print("Test  input shape : {}".format(Xtest.shape))
+            print("No. of Classes : {}".format(self.size_output))
         
     def tokenizing_data(self):
         tokenizer = Tokenizer(num_words = vocab_size, oov_token=oov_tok)
@@ -61,8 +63,8 @@ class DoggyRNN:
         x = Dense(dense_1_rnn, activation='relu', name='dense2')(x)
         x = Dense(dense_2_rnn, activation='relu', name='dense3')(x)
         x = Dense(dense_2_rnn, activation='relu', name='dense4')(x)
-        x = Dense(dense_2_rnn, activation='relu', name='dense5')(x)
-        outputs = Dense(self.size_output, activation='sigmoid', name='dense_out')(x)
+        x = Dense(dense_3_rnn, activation='relu', name='dense5')(x)
+        outputs = Dense(self.size_output, activation='softmax', name='dense_out')(x)
 
         model = Model(inputs=inputs, outputs=outputs)
         self.model = model
@@ -83,7 +85,6 @@ class DoggyRNN:
                                 )
 
     def save_model(self):
-        print("RNN LSTM Model Saving !")
         model_json = self.model.to_json()
         with open(rnn_architecture, "w") as json_file:
             json_file.write(model_json)
@@ -103,17 +104,14 @@ class DoggyRNN:
                            optimizer=Adam(learning_rate), 
                            metrics=['accuracy']
                            )
-        print("RNN LSTM Model Loaded !")
 
     def run(self):
         if os.path.exists(rnn_weights):
+            print("RNN LSTM Model Loading !")
             self.load_model()
         else:
+            print("RNN LSTM Model Training !")
             self.tokenizing_data()
             self.feature_extractor()
             self.train()
-            # self.save_model()
-
-if __name__ == "__main__":
-    model = DoggyRNN()
-    model.run()
+            self.save_model()

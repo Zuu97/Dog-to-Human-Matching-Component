@@ -21,7 +21,6 @@ tf.config.experimental.set_memory_growth(physical_devices[0], True)
 class DoggyCNN(object):
     def __init__(self):
         if not (os.path.exists(cnn_architecture)  and os.path.exists(cnn_weights)):
-            print('FUck')
             # train_generator, validation_generator = load_image_data()
             # self.train_generator = train_generator
             # self.validation_generator = validation_generator
@@ -30,7 +29,7 @@ class DoggyCNN(object):
 
             self.train_generator, classes = load_image_data()
             self.train_step = len(classes) // batch_size_cnn
-
+            self.classes = classes
 
     def cnn_autoencoder(self): #MobileNet is not build through sequential API, so we need to convert it to sequential
         mobilenet_functional = tf.keras.applications.MobileNet()
@@ -43,7 +42,7 @@ class DoggyCNN(object):
         x = Dense(dense_1_cnn, activation='relu')(x)
         x = Dense(dense_2_cnn, activation='relu')(x)
         x = BatchNormalization()(x)
-        # outputs = Dense(num_classes, activation='relu')(x)
+        # outputs = Dense(len(set(self.classes)), activation='relu')(x)
         
         x = Dense(dense_3_cnn, use_bias=False)(x)
         x = BatchNormalization()(x)
@@ -74,7 +73,7 @@ class DoggyCNN(object):
                     outputs=outputs
                     )
                     
-        model.summary()
+        # model.summary()
         self.model = model
 
     def train(self):
@@ -105,7 +104,6 @@ class DoggyCNN(object):
 
 
     def save_model(self):
-        print("Mobile Net TF Model Saving !")
         model_json = self.model.to_json()
         with open(cnn_architecture, "w") as json_file:
             json_file.write(model_json)
@@ -130,16 +128,13 @@ class DoggyCNN(object):
                           optimizer='Adam',
                           loss='mse'
                           )
-        print("Mobile Net TF Model Loaded !")
-
 
     def run(self):
         if os.path.exists(cnn_weights):
+            print("Mobile Net TF Model Loading !")
             self.load_model()
         else:
+            print("Mobile Net TF Model Training !")
             self.cnn_autoencoder()
             self.train()
             self.save_model()
-
-model = DoggyCNN()
-model.run()
