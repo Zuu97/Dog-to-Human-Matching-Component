@@ -11,8 +11,6 @@ from collections import Counter
 from sklearn.utils import shuffle
 import matplotlib.pyplot as plt
 
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.models import model_from_json, Sequential, Model, load_model
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.optimizers import Adam
@@ -29,36 +27,18 @@ tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 class DoggyRNN:
     def __init__(self):
-        if not (os.path.exists(rnn_architecture)  and os.path.exists(rnn_weights)):
-            Xtrain, Xtest, Ytrain, Ytest = load_text_data()
-            self.Xtrain = Xtrain
-            self.Ytrain = Ytrain
-            self.Xtest  = Xtest
+        if not os.path.exists(rnn_weights):
+            Xtrain_pad, Xtest_pad, Ytrain, Ytest = load_text_data()
+            self.Xtrain_pad = Xtrain_pad
+            self.Xtest_pad = Xtest_pad
+            self.Ytrain  = Ytrain
             self.Ytest  = Ytest
-            print("Train input shape : {}".format(Xtrain.shape))
-            print("Test  input shape : {}".format(Xtest.shape))
             self.size_output = len(set(self.Ytest))
-            print("Train input shape : {}".format(Xtrain.shape))
-            print("Test  input shape : {}".format(Xtest.shape))
-            print("No. of Classes : {}".format(self.size_output))
-        
-    def tokenizing_data(self):
-        tokenizer = Tokenizer(num_words = vocab_size, oov_token=oov_tok)
-        tokenizer.fit_on_texts(self.Xtrain)
-
-        Xtrain_seq = tokenizer.texts_to_sequences(self.Xtrain)
-        self.Xtrain_pad = pad_sequences(Xtrain_seq, maxlen=max_length, truncating=trunc_type)
-
-        # print(Counter([len(x) for x in Xtrain_seq]))
-
-        Xtest_seq  = tokenizer.texts_to_sequences(self.Xtest)
-        self.Xtest_pad = pad_sequences(Xtest_seq, maxlen=max_length)
-        self.tokenizer = tokenizer
 
     def feature_extractor(self):
         inputs = Input(shape=(max_length,))
         x = Embedding(output_dim=embedding_dimS, input_dim=vocab_size, input_length=max_length, name='embedding')(inputs)
-        x = Bidirectional(LSTM(size_lstm), name='bidirectional_lstm')(x)
+        x = Bidirectional(LSTM(size_lstm, unroll=True), name='bidirectional_lstm')(x)
         x = Dense(dense_1_rnn, activation='relu', name='dense1')(x)
         x = Dense(dense_1_rnn, activation='relu', name='dense2')(x)
         x = Dense(dense_2_rnn, activation='relu', name='dense3')(x)
@@ -66,8 +46,14 @@ class DoggyRNN:
         x = Dense(dense_3_rnn, activation='relu', name='dense5')(x)
         outputs = Dense(self.size_output, activation='softmax', name='dense_out')(x)
 
-        model = Model(inputs=inputs, outputs=outputs)
+        model = Model(
+                    inputs=inputs, 
+                    outputs=outputs,
+                    name='RNN_Model'
+                    )
         self.model = model
+
+        self.model.summary()
 
     def train(self):
         self.model.compile(
@@ -75,7 +61,6 @@ class DoggyRNN:
                         optimizer=Adam(learning_rate), 
                         metrics=['accuracy']
                         )
-        self.model.summary()
         self.history = self.model.fit(
                                 self.Xtrain_pad,
                                 self.Ytrain,
@@ -85,33 +70,18 @@ class DoggyRNN:
                                 )
 
     def save_model(self):
-        model_json = self.model.to_json()
-        with open(rnn_architecture, "w") as json_file:
-            json_file.write(model_json)
-        self.model.save_weights(rnn_weights)
+        self.model.save(rnn_weights)
+        print(" RNN Model Saved")
 
     def load_model(self):
         K.clear_session() #clearing the keras session before load model
-        json_file = open(rnn_architecture, 'r')
-        loaded_model_json = json_file.read()
-        json_file.close()
-
-        self.model = model_from_json(loaded_model_json)
-        self.model.load_weights(rnn_weights)
-
-        self.model.compile(
-                           loss='sparse_categorical_crossentropy', 
-                           optimizer=Adam(learning_rate), 
-                           metrics=['accuracy']
-                           )
+        self.model = load_model(rnn_weights)
+        print(" RNN Model Loaded")
 
     def run(self):
         if os.path.exists(rnn_weights):
-            print("RNN LSTM Model Loading !")
             self.load_model()
         else:
-            print("RNN LSTM Model Training !")
-            self.tokenizing_data()
             self.feature_extractor()
             self.train()
             self.save_model()
