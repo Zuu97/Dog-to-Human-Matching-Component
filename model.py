@@ -6,129 +6,109 @@ import logging
 logging.getLogger('tensorflow').disabled = True
 import base64
 import numpy as np
-from tensorflow.keras.models import model_from_json, Sequential, Model, load_model
-from tensorflow.keras.layers import Activation, Dense, Input, BatchNormalization
+from tensorflow.keras.models import Model, load_model
+from tensorflow.keras.layers import Dense, Dropout
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras import backend as K
-from matplotlib import pyplot as plt
-from sklearn.neighbors import NearestNeighbors
-from util import load_image_data
+from util import load_rcn_data
 from variables import *
 
 from cnn import DoggyCNN
 from rnn import DoggyRNN
 
 physical_devices = tf.config.experimental.list_physical_devices('GPU')
-print("\nNum GPUs Available: {}\n".format(len(physical_devices)))
 tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
-class DogToDogMatchingComponent(object):
+class DoggyRCN(object):
     def __init__(self):
-        if not (os.path.exists(final_model_weights)  and os.path.exists(final_model_architecture)):
+        if not os.path.exists(rcn_weights):
+            Xtrain_pad, Xtest_pad, Imgtrain, Imgtest = load_rcn_data()
+            self.Xtrain_pad = Xtrain_pad
+            self.Xtest_pad = Xtest_pad
+            self.Imgtrain = Imgtrain
+            self.Imgtest = Imgtest
+
+            print(" Train image Shape : {}".format(Imgtrain.shape))
+            print(" Test  image Shape : {}".format(Imgtest.shape))
+            print(" Train review Shape: {}".format(Xtrain_pad.shape))
+            print(" Test review Shape : {}".format(Xtest_pad.shape))
+            
             self.rnn_model = DoggyRNN()
             self.cnn_model = DoggyCNN()
             self.rnn_model.run()
             self.cnn_model.run()
 
+        self.build_rnn_encoder()
+        self.build_cnn_encoder()
+        self.image_extraction()
+        
     def build_rnn_encoder(self):
         self.rnn_lstm= self.rnn_model.model
-        inputs = Input(shape=(max_length,))
-        x = inputs
-        for layer in self.rnn_lstm.layers[1:-2]:
-            # layer.trainable = False
-            x = layer(x)
-        outputs = x
+        inputs = self.rnn_lstm.input
+        outputs = self.rnn_lstm.layers[-3].output
         self.rnn_encoder = Model(
                             inputs = inputs,
                             outputs = outputs
                             )
                             
-    def build_cnn_decoder(self):
-        self.cnn_autoencoder = self.cnn_model.model
-        inputs = Input(shape=(dense_2_rnn,))
-        x = inputs
-        for layer in self.cnn_autoencoder.layers[-18:]:
-            layer.trainable = False
-            x = layer(x)
-        outputs = x
-        self.cnn_decoder = Model(
+    def build_cnn_encoder(self):
+        self.cnn_mobilenet = self.cnn_model.model
+        inputs = self.cnn_mobilenet.input
+        outputs = self.cnn_mobilenet.layers[-2].output
+        self.cnn_encoder = Model(
                             inputs = inputs,
                             outputs = outputs
                             )
 
-    def dogMatcher(self):
-        self.build_rnn_encoder()
-        self.build_cnn_decoder()
+    def image_extraction(self):
+        self.Ytrain = self.cnn_encoder.predict(self.Imgtrain)
+        self.Ytest  = self.cnn_encoder.predict(self.Imgtest)
 
-        inputs = Input(shape=(max_length,))
-        rnn_pred = self.rnn_encoder(inputs)
-        outputs = self.cnn_decoder(rnn_pred)
+    def MergedModel(self):
+        input_rnn = self.rnn_encoder.input
+        output_rnn = self.rnn_encoder(input_rnn)
+
+        x = Dense(dense_1_rcn, activation='relu')(output_rnn)
+        x = Dense(dense_1_rcn, activation='relu')(x)
+        x = Dense(dense_1_rcn, activation='relu')(x)
+        x = Dropout(keep_prob)(x)
+        output_cnn = Dense(dense_2_rcn)(x)
 
         self.model = Model(
-                        inputs = inputs,
-                        outputs = outputs,
-                        name = 'Dog to Dog Matching Component'
+                        inputs = input_rnn,
+                        outputs = output_cnn,
+                        name = 'RCN_Model'
                         )
         self.model.summary()
 
-
     def train(self):
-
         self.model.compile(
                           optimizer='Adam',
                           loss='mse'
                           )
         self.model.fit(
-                        self.train_generator,
-                        steps_per_epoch = self.train_step,
-                        epochs=epochs_cnn,
+                        self.Xtrain_pad,
+                        self.Ytrain,
+                        validation_data=[self.Xtest_pad, self.Ytest],
+                        batch_size = batch_size_rcn,
+                        epochs=epochs_rcn,
                         verbose=verbose
                         )
 
-        # self.model.compile(
-        #                   optimizer='Adam',
-        #                   loss='categorical_crossentropy',
-        #                   metrics=['accuracy']
-        #                   )
-        # self.model.fit_generator(
-        #                   self.train_generator,
-        #                   steps_per_epoch = self.train_step,
-        #                   validation_data = self.validation_generator,
-        #                   validation_steps = self.validation_step,
-        #                   epochs=epochs_cnn,
-        #                   verbose=verbose
-        #                 )
-
     def save_model(self):
-        print("RCN Model Saving !")
-        model_json = self.model.to_json()
-        with open(final_model_architecture, "w") as json_file:
-            json_file.write(model_json)
-        self.model.save_weights(final_model_weights)
+        self.model.save(rcn_weights)
+        print(" RCN Model Saved")
 
     def load_model(self):
         K.clear_session() #clearing the keras session before load model
-        json_file = open(final_model_architecture, 'r')
-        loaded_model_json = json_file.read()
-        json_file.close()
-
-        self.model = model_from_json(loaded_model_json)
-        self.model.load_weights(final_model_weights)
-
-        self.model.compile(
-                          optimizer='Adam',
-                          loss='mse'
-                          )
-        print("RCN Model Loaded !")
+        self.model = load_model(rcn_weights)
+        print(" RCN Model Loaded")
 
 
-    # def run(self):
-    #     if os.path.exists(cnn_weights):
-    #         self.load_model()
-    #     else:
-    #         self.model_conversion()
-    #         self.train()
-    #         self.save_model()
-
-model = DogToDogMatchingComponent()
-model.dogMatcher()
+    def run(self):
+        if os.path.exists(rcn_weights):
+            self.load_model()
+        else:
+            self.MergedModel()
+            self.train()
+            self.save_model()
