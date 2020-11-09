@@ -17,7 +17,7 @@ from nltk import word_tokenize
 from nltk.stem import WordNetLemmatizer
 from sklearn.preprocessing import LabelEncoder
 from tensorflow.keras.models import Model, load_model
-from tensorflow.keras.layers import Dense, Dropout, Concatenate
+from tensorflow.keras.layers import Dense, Dropout, Concatenate, Input
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.optimizers import Adam
@@ -73,7 +73,7 @@ def preprocessed_data(reviews):
 
     return np.array(updated_reviews)
     
-def tokenizing_data(Xtrain, Xtest):
+def tokenizing_data(Xtrain, Xtest=None):
     if not os.path.exists(tokenizer_path):
         tokenizer = Tokenizer(num_words = 3000, oov_token="<OOV>")
         tokenizer.fit_on_texts(Xtrain)
@@ -87,9 +87,12 @@ def tokenizing_data(Xtrain, Xtest):
     Xtrain_seq = tokenizer.texts_to_sequences(Xtrain)
     Xtrain_pad = pad_sequences(Xtrain_seq, maxlen=30, truncating='post')
 
-    Xtest_seq  = tokenizer.texts_to_sequences(Xtest)
-    Xtest_pad = pad_sequences(Xtest_seq, maxlen=30)
-    return Xtrain_pad, Xtest_pad
+    if Xtest:
+        Xtest_seq  = tokenizer.texts_to_sequences(Xtest)
+        Xtest_pad = pad_sequences(Xtest_seq, maxlen=30)
+        return Xtrain_pad, Xtest_pad
+    else:
+        return Xtrain_pad
 
 def preprocessing_function(img):
     img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
@@ -148,33 +151,21 @@ def load_crn_data():
     df[['Accomodation','Garden', 'Gender', 'Age', 'Size']] = label_encoding(df_cat)
 
     features = df[ann_cols].values
-
-    Ntest = int(0.15 * len(doggy_reviews))
     features, reviews, images = shuffle(features, doggy_reviews, images)
-    Reviewtrain, Reviewval = reviews[:-Ntest], reviews[-Ntest:]
-    Xtrain_pad, Xtest_pad = tokenizing_data(Reviewtrain, Reviewval)
-    Imgtrain, Imgtest = images[:-Ntest], images[-Ntest:]
-    Anntrain, Anntest = features[:-Ntest], features[-Ntest:]
-    return Anntrain, Anntest, Xtrain_pad, Xtest_pad, Imgtrain, Imgtest
+    reviews = tokenizing_data(reviews)
+    return features, reviews, images
 
-# load_crn_data()
 class ConvolutionalRecurrentModel(object):
     def __init__(self):
         if not os.path.exists(crn_weights):
-            Anntrain, Anntest, Xtrain_pad, Xtest_pad, Imgtrain, Imgtest = load_crn_data()
-            self.Xtrain_pad = Xtrain_pad
-            self.Xtest_pad = Xtest_pad
-            self.Imgtrain = Imgtrain
-            self.Imgtest = Imgtest
-            self.Anntrain = Anntrain
-            self.Anntest = Anntest
+            features, reviews, images = load_crn_data()
+            self.features = features
+            self.reviews = reviews
+            self.images = images
 
-            print(" Train image Shape : {}".format(Imgtrain.shape))
-            print(" Test  image Shape : {}".format(Imgtest.shape))
-            print(" Train review Shape: {}".format(Xtrain_pad.shape))
-            print(" Test review Shape : {}".format(Xtest_pad.shape))
-            print(" Train feature Shape: {}".format(Anntrain.shape))
-            print(" Test feature Shape : {}\n".format(Anntest.shape))
+            print(" image Shape : {}".format(images.shape))
+            print(" review Shape: {}".format(reviews.shape))
+            print(" feature Shape: {}".format(features.shape))
             
             self.rnn_model = RecurrentNNmodel()
             self.cnn_model = ConvolutionalNNmodel()
@@ -183,10 +174,10 @@ class ConvolutionalRecurrentModel(object):
             self.cnn_model.run()
             self.ann_model.run()
 
-        self.build_rnn_encoder()
-        self.build_cnn_encoder()
-        self.build_ann_encoder()
-        self.image_extraction()
+            self.build_rnn_encoder()
+            self.build_cnn_encoder()
+            self.build_ann_encoder()
+            self.image_extraction()
 
     def build_ann_encoder(self):
         self.rnn_dense= self.ann_model.model
@@ -216,8 +207,7 @@ class ConvolutionalRecurrentModel(object):
                             )
 
     def image_extraction(self):
-        self.Ytrain = self.cnn_encoder.predict(self.Imgtrain)
-        self.Ytest  = self.cnn_encoder.predict(self.Imgtest)
+        self.Y = self.cnn_encoder.predict(self.images)
 
     def MergedModel(self):
         input_rnn = self.rnn_encoder.input
@@ -248,12 +238,9 @@ class ConvolutionalRecurrentModel(object):
                           loss='mse'
                           )
         self.model.fit(
-                        [self.Xtrain_pad, self.Anntrain],
-                        self.Ytrain,
-                        validation_data=[
-                                        [self.Xtest_pad, self.Anntest], 
-                                        self.Ytest
-                                        ],
+                       [self.reviews, self.features],
+                        self.Y,
+                        validation_split=0.15,
                         batch_size = 16,
                         epochs=30
                         )
@@ -267,7 +254,6 @@ class ConvolutionalRecurrentModel(object):
         self.model = load_model(crn_weights)
         print(" CRN Model Loaded")
 
-
     def run(self):
         if os.path.exists(crn_weights):
             self.load_model()
@@ -275,6 +261,3 @@ class ConvolutionalRecurrentModel(object):
             self.MergedModel()
             self.train()
             self.save_model()
-
-model = ConvolutionalRecurrentModel()
-model.run()
