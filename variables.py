@@ -29,6 +29,6 @@ crn_converter_path = "weights/crn_model.tflite"
 ##Inference
 inference_save_path = os.path.join(os.getcwd(), 'weights/inference_images.npz')
 dog_classes = {'shih tzu', 'papillon', 'maltese', 'afghan hound', 'beagle'}
-n_neighbour_weights = 'weights/nearest neighbor weight folder/nearest neighbour {}.pkl'
+n_neighbour_weights = 'weights/n_neighbor weights/nearest neighbour {}.pkl'
 n_neighbour = 3
 min_test_sample = 30
