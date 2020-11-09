@@ -121,7 +121,7 @@ class RecurrentNNmodel:
             self.size_output = len(set(self.Ytest))
 
     def feature_extractor(self):
-        inputs = Input(shape=(30,))
+        inputs = Input(shape=(30,), name='input_rnn')
         x = Embedding(output_dim=512, input_dim=3000, input_length=30, name='embedding')(inputs)
         x = Bidirectional(LSTM(256, unroll=True), name='bidirectional_lstm')(x)
         x = Dense(512, activation='relu', name='dense1')(x)
