@@ -122,7 +122,7 @@ class ArtificialNNmodel:
 
     def run(self):
         if os.path.exists(ann_weights):
-            print(" ANN Model Loading ")
+            print(" ANN Model Loaded ")
             self.load_model()
         else:
             print(" ANN Model Training")
