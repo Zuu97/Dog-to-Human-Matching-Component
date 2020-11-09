@@ -20,8 +20,7 @@ def get_class_names():
     return os.listdir(train_dir)
 
 def preprocessing_function(img):
-    img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
-    return img
+    return tf.keras.applications.mobilenet_v2.preprocess_input(img)
 
 def load_image_data():
     train_datagen = tf.keras.preprocessing.image.ImageDataGenerator(
